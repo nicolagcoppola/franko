@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listSessions, parseTranscriptHead, slugForDir } from "../lib/sessions.mjs";
+import { listSessions, parseTranscriptHead, parseTranscriptTail, slugForDir } from "../lib/sessions.mjs";
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "franko-sessions-"));
@@ -56,6 +56,31 @@ test("parseTranscriptHead tolerates malformed lines and reads titles", () => {
   assert.equal(info.summary, "riepilogo della sessione");
 });
 
+test("parseTranscriptTail reads tokens, cost and last prompt", () => {
+  const tail = [
+    JSON.stringify({ type: "last-prompt", lastPrompt: "ultimo prompt utile" }),
+    JSON.stringify({
+      type: "cost-state",
+      sessionId: "x",
+      totalCostUSD: 0.12,
+      modelUsage: {
+        "claude-opus": {
+          inputTokens: 100,
+          outputTokens: 50,
+          thinkingTokens: 10,
+          cacheReadInputTokens: 1000,
+          cacheCreationInputTokens: 200,
+        },
+        "claude-haiku": { inputTokens: 10, outputTokens: 5, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+      },
+    }),
+  ].join("\n");
+  const info = parseTranscriptTail(tail);
+  assert.equal(info.lastPrompt, "ultimo prompt utile");
+  assert.equal(info.tokens, 1365);
+  assert.equal(info.costUSD, 0.12);
+});
+
 test("listSessions sorts by recency, applies limit and prefers titles over prompts", () => {
   const configDir = tempDir();
   writeTranscript(
@@ -83,6 +108,37 @@ test("listSessions sorts by recency, applies limit and prefers titles over promp
   assert.equal(sessions[0].sizeBytes > 0, true);
   assert.equal(sessions[1].name, "prima richiesta");
   assert.equal(sessions[1].projectLabel, "Desktop");
+});
+
+test("listSessions names sessions from history and hides command-only ones", () => {
+  const configDir = tempDir();
+  writeTranscript(configDir, "D--Progetti-Desktop", "aaaa1111-0000", [
+    { type: "user", isMeta: true, message: { content: "<local-command-caveat>Caveat: ..." } },
+    { type: "user", message: { content: "<command-name>/plugin</command-name>" } },
+  ], 1000);
+  writeTranscript(configDir, "C--Users-Nicola", "bbbb2222-0000", [
+    { type: "user", message: { content: "<command-name>/clear</command-name>" } },
+  ], 2000);
+  fs.writeFileSync(
+    path.join(configDir, "history.jsonl"),
+    [
+      JSON.stringify({ display: "/plugin install franko", sessionId: "aaaa1111-0000" }),
+      JSON.stringify({ display: "sistemare il parser sessioni", sessionId: "aaaa1111-0000" }),
+      JSON.stringify({ display: "/clear", sessionId: "bbbb2222-0000" }),
+    ].join("\n"),
+  );
+
+  const sessions = listSessions({ configDir });
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].sessionId, "aaaa1111-0000");
+  assert.equal(sessions[0].name, "sistemare il parser sessioni");
+  assert.equal(sessions[0].hasContent, true);
+
+  const withEmpty = listSessions({ configDir, includeEmpty: true });
+  assert.equal(withEmpty.length, 2);
+  const empty = withEmpty.find((session) => session.sessionId === "bbbb2222-0000");
+  assert.equal(empty.name, "(solo comandi locali)");
+  assert.equal(empty.hasContent, false);
 });
 
 test("listSessions honors limit and projectDir filter", () => {

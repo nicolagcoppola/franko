@@ -1,14 +1,14 @@
 # franko
 
-Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear, and immediately recaps the latest sessions across all projects so you can jump back into what you were working on.
+Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear, and immediately recaps the latest sessions across all projects with names, token usage and ready resume commands.
 
 ```text
 Franko qui. Buongiorno, tutto in ordine. Faccio subito il punto della situazione.
 
-Punto della situazione: 10 sessioni recenti su 3 progetti.
-1. Desktop — "fix validazione catalogo" — 2h fa
-2. rockspinner — "serie di plugin per opencode" — 1g fa
-3. Desktop — "recap sessioni franko" — 2g fa
+Punto della situazione: 8 sessioni recenti su 3 progetti.
+1. Desktop — "fix validazione catalogo" — 2h fa — 344k tok
+2. rockspinner — "serie di plugin per opencode" — 1g fa — 278k tok
+3. Desktop — "recap sessioni franko" — 2g fa — 43k tok
 
 Apri /franko:recenti per riprendere una sessione.
 ```
@@ -17,7 +17,10 @@ Apri /franko:recenti per riprendere una sessione.
 
 - **Greeting on every entry point**: `startup`, `resume` and `/clear` through a `SessionStart` hook
 - **Recap across all projects**: the latest 10 sessions from `~/.claude/projects`, newest first
-- **Ready resume commands**: `/franko:recenti` prints `claude --resume <session-id>` for every session
+- **Real names**: custom title, summary, prompt history or transcript prompt, in that order; sessions with only local commands are hidden by default
+- **Token usage and cost**: read from the last `cost-state` entry of each transcript
+- **Resume by number**: `/franko:apri 3` copies the resume command; `franko 3` in a terminal resumes directly
+- **Rename to remember**: `/franko:rinnomina 3 nome` stores an alias and, when possible, appends a custom title for the native picker
 - **Built-in phrases**: the greeting catalog is internal plugin code, not user configuration
 - **Tolerant transcript reader**: sessions are read best-effort; older formats or malformed lines never break the hook
 - **Fully offline**: zero npm dependencies, no network access
@@ -53,27 +56,38 @@ claude --plugin-dir /path/to/franko
 
 | Command | Effect |
 | :--- | :--- |
-| `/franko:recenti` | Latest 10 sessions of every project with resume commands |
-| `/franko:recenti` + `--project` option | Only sessions of the current project |
-| `/franko:recenti` + `--limit N` option | Show N sessions |
-| `/franko:recenti` + `--json` option | Machine-readable output |
+| `/franko:recenti` | Latest 10 sessions of every project, with tokens, cost and resume commands |
+| `/franko:apri 3` | Resolves session 3 and copies `claude --resume <id>`: paste it in a terminal |
+| `/franko:rinnomina 3 nome` | Renames session 3 with an alias |
+| `franko 3` | Terminal: resumes session 3 directly (requires the shim, see below) |
+| `franko list --project` | Only sessions of the current project |
+| `franko list --all` | Include sessions with no real content |
+| `franko list --json` | Machine-readable output |
 
 The same commands work without the plugin:
 
 ```bash
 node scripts/franko.mjs list
-node scripts/franko.mjs list --project
-node scripts/franko.mjs list --json
+node scripts/franko.mjs command 3 --clip
+node scripts/franko.mjs rinomina 3 "nome che ricordo"
+node scripts/franko.mjs open 3
 ```
 
-To resume a session, run `claude --resume <session-id>` in a terminal, or open `/resume` and search by title or project.
+A plugin cannot switch sessions from inside Claude Code, so `/franko:apri` prepares the command and copies it; the actual resume happens in a terminal.
 
-## How it works
+### Install the `franko` terminal command
 
-- `hooks/hooks.json` registers a `SessionStart` hook for `startup`, `resume` and `clear`.
-- `scripts/franko.mjs hook` reads the hook payload from stdin, scans `~/.claude/projects/*/*.jsonl` (honoring `CLAUDE_CONFIG_DIR`) and returns a `systemMessage` with the greeting plus the recap.
-- `lib/sessions.mjs` reads only the head of each transcript (64 KB) and picks a display name in this order: custom title, summary, first real user prompt. Command wrappers and local-command noise are skipped.
-- `lib/greetings.mjs` holds the fixed phrase catalog used for every step.
+```bash
+npm run shim        # writes franko / franko.cmd into ~/.local/bin
+npm run shim:remove # removes it
+```
+
+## How names and tokens are resolved
+
+- **Name priority**: `custom-title` entry, `summary` entry, first non-command prompt from `~/.claude/history.jsonl`, first real prompt in the transcript head, `lastPrompt` in the transcript tail. Sessions with no real content are hidden unless `--all` is used.
+- **Tokens**: sum of `inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens` across models in the last `cost-state` entry; cost from `totalCostUSD`.
+- **Numbers**: `list` stores a snapshot in `~/.claude/franko/last-list.json`, so `franko 3` and `/franko:apri 3` keep referring to the same list you just saw.
+- **Aliases**: `~/.claude/franko/aliases.json`. Renaming also appends a `custom-title` entry to the transcript, best effort: if your Claude Code version does not read it, the Franko alias still works.
 
 The transcript format is internal to Claude Code and may change; the reader is tolerant and falls back to file name and timestamp metadata.
 
