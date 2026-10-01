@@ -1,15 +1,14 @@
 ---
 name: rename
-description: Rename a franko session so it is easy to remember, given its number or name. Use when the user asks to give a name to a recent conversation.
-allowed-tools: Bash(node:*)
+description: Rename a session locally. Invoke explicitly; handled before the model.
+argument-hint: '<number|"name"> <new name>'
+disable-model-invocation: true
 ---
 
 # franko:rename
 
-Run:
+The plugin's `UserPromptExpansion` hook handles this command locally and blocks model execution.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/franko.mjs" rename $ARGUMENTS
-```
-
-Report the output. The name is saved in the franko aliases and, when possible, appended to the transcript for the native Claude Code picker.
+If this text reaches you, the local hook is unavailable. Do not run tools or simulate the result.
+Tell the user to enable Franko hooks, reload the plugin, and use a Claude Code version supporting `UserPromptExpansion` (verified on 2.1.286).
+Until then, `franko rename <number> <name>` in an external terminal avoids model calls. This fallback response itself uses tokens.

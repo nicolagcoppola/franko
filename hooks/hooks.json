@@ -1,6 +1,19 @@
 {
   "description": "Franko greets and recaps recent sessions on startup, resume and clear.",
   "hooks": {
+    "UserPromptExpansion": [
+      {
+        "matcher": "^franko:(help|list|details|search|rename|resume)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/local-command.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "startup|resume|clear",

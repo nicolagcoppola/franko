@@ -1,17 +1,13 @@
 ---
 name: help
-description: Show the franko commands and options with examples. Use when the user asks what franko can do or how to use it.
-allowed-tools: Bash(node:*)
+description: Local Franko command reference. Invoke explicitly; handled before the model.
+disable-model-invocation: true
 ---
 
 # franko:help
 
-Run:
+The plugin's `UserPromptExpansion` hook handles this command locally and blocks model execution.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/franko.mjs" help
-```
-
-Report the output as-is. Do not invent commands that are not listed.
-
-Point the user to the terminal picker (`franko`) for a zero-token workflow, and to the other `/franko:*` skills for chat-driven operations.
+If this text reaches you, the local hook is unavailable. Do not run tools or simulate the result.
+Tell the user to enable Franko hooks, reload the plugin, and use a Claude Code version supporting `UserPromptExpansion` (verified on 2.1.286).
+Until then, `franko help` in an external terminal avoids model calls. This fallback response itself uses tokens.

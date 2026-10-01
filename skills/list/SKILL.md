@@ -1,29 +1,14 @@
 ---
 name: list
-description: List the most recent real Claude Code conversations with title, project, last activity and tokens, as a Markdown table. Use when the user asks to see recent sessions or where they left off.
-allowed-tools: Bash(node:*)
+description: Local session table with title, project, activity and tokens. Invoke explicitly; handled before the model.
+argument-hint: "[--project] [--all] [--limit N]"
+disable-model-invocation: true
 ---
 
 # franko:list
 
-Run:
+The plugin's `UserPromptExpansion` hook handles this command locally and blocks model execution.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/franko.mjs" list --md
-```
-
-Options to pass through when the user asks for them:
-
-- Current project only: `--project`
-- Include sessions without real content: `--all`
-- Number of rows: `--limit 20`
-
-Rules:
-
-- Report the output as-is. Never invent or summarize sessions.
-- Keep the Markdown table intact and do not wrap it in a code fence, so it renders as a table.
-- The numbers match the ones used by `/franko:details <number>` and `/franko:resume <number>`.
-- To rename a session: `/franko:rename <number> <name>`.
-- To resume: `/franko:resume <number>` prepares the command, or `franko <number>` in the terminal resumes directly.
-- Zero-token workflow: tell the user to run `franko` in a terminal for the interactive picker.
-- If `${CLAUDE_PLUGIN_ROOT}` is not expanded, find the `franko` folder in the plugin cache under `~/.claude/plugins/` and use that path.
+If this text reaches you, the local hook is unavailable. Do not run tools or simulate the result.
+Tell the user to enable Franko hooks, reload the plugin, and use a Claude Code version supporting `UserPromptExpansion` (verified on 2.1.286).
+Until then, `franko list` in an external terminal avoids model calls. This fallback response itself uses tokens.

@@ -1,6 +1,6 @@
 {
   "name": "franko",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "Franko: a punctual colleague for Claude Code. Greets on every session start and offers a local session picker with titles, token usage and resume commands.",
@@ -9,7 +9,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test tests/greetings.test.mjs tests/titles.test.mjs tests/sessions.test.mjs tests/state.test.mjs tests/cache.test.mjs tests/format.test.mjs tests/picker.test.mjs tests/cli.test.mjs",
+    "test": "node --test tests/greetings.test.mjs tests/titles.test.mjs tests/sessions.test.mjs tests/state.test.mjs tests/cache.test.mjs tests/format.test.mjs tests/picker.test.mjs tests/cli.test.mjs tests/local-command.test.mjs",
+    "verify:local": "node scripts/verify-local-commands.mjs",
     "validate": "node scripts/validate-catalog.mjs",
     "shim": "node scripts/install-cli.mjs",
     "shim:remove": "node scripts/install-cli.mjs --remove"

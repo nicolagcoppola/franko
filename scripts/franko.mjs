@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pickGreeting } from "../lib/greetings.mjs";
 import { listSessions } from "../lib/sessions.mjs";
-import { buildRecapMessage, formatDetail, formatMarkdownTable, formatTable } from "../lib/format.mjs";
+import { buildRecapMessage, formatBorderedTable, formatDetail, formatMarkdownTable, formatTable } from "../lib/format.mjs";
 import { applyAliases, readAliases, readSnapshot, writeAliases, writeSnapshot } from "../lib/state.mjs";
 import { filterSessions, parsePickerCommand } from "../lib/picker.mjs";
 
@@ -103,6 +103,8 @@ function parseListArgs(args) {
       options.json = true;
     } else if (arg === "--md") {
       options.markdown = true;
+    } else if (arg === "--chat") {
+      options.chat = true;
     }
   }
   return options;
@@ -125,6 +127,10 @@ function parseSearchArgs(args) {
 }
 
 function outputSessions(sessions, options, footer) {
+  if (options.chat) {
+    process.stdout.write(`${formatBorderedTable(sessions)}\n\nDetails: /franko:details <number>\nResume: /franko:resume <number>\nSearch: /franko:search <text>\n`);
+    return;
+  }
   if (options.json) {
     process.stdout.write(`${JSON.stringify(sessions, null, 2)}\n`);
     return;
@@ -151,14 +157,15 @@ function runSearch(args) {
     process.exitCode = 1;
     return;
   }
-  const sessions = filterSessions(loadSessions(options), options.query);
+  const sessions = filterSessions(loadSessions({ ...options, limit: 300, parseLimit: 300 }), options.query)
+    .slice(0, options.limit);
   writeSnapshot(sessions, options.configDir, options.env);
   outputSessions(sessions, options, LIST_FOOTER);
 }
 
 function resolveReference(ref, options = {}) {
   const aliases = readAliases(options.configDir, options.env);
-  const sessions = applyAliases(listSessions({ ...options, includeEmpty: true }), aliases);
+  const sessions = applyAliases(listSessions({ ...options, includeEmpty: true, limit: 300, parseLimit: 300 }), aliases);
   if (/^\d+$/.test(ref)) {
     const index = Number(ref) - 1;
     const snapshot = readSnapshot(options.configDir, options.env);
@@ -172,7 +179,8 @@ function resolveReference(ref, options = {}) {
         }
       );
     }
-    return sessions[index] || null;
+    // An existing snapshot is authoritative, including an empty search result.
+    return snapshot ? null : sessions[index] || null;
   }
   const needle = ref.toLowerCase();
   return (
@@ -273,6 +281,9 @@ function runCommand(args) {
   const command = `claude --resume ${target.sessionId}`;
   process.stdout.write(`Session: ${target.displayName || target.name || target.sessionId}\n`);
   process.stdout.write(`Command: ${command}\n`);
+  if (args.includes("--chat")) {
+    process.stdout.write(`In Claude Code: /resume ${target.sessionId}\n`);
+  }
   if (clip && process.platform === "win32") {
     const result = spawnSync("clip", [], { input: command });
     if (!result.error && result.status === 0) {

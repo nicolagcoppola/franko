@@ -1,19 +1,14 @@
 ---
 name: search
-description: Search the recent Claude Code conversations by text and show the matches as a Markdown table. Use when the user asks to find a past session by topic, word or project.
-allowed-tools: Bash(node:*)
+description: Local session search and numbered table. Invoke explicitly; handled before the model.
+argument-hint: '<text> [--project] [--limit N]'
+disable-model-invocation: true
 ---
 
 # franko:search
 
-Run:
+The plugin's `UserPromptExpansion` hook handles this command locally and blocks model execution.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/franko.mjs" search $ARGUMENTS --md
-```
-
-Rules:
-
-- Report the output as-is, keeping the Markdown table intact and without a code fence.
-- The search renumbers the results and saves that numbering, so `/franko:details <number>` and `/franko:resume <number>` refer to the matches just shown.
-- If there are no matches, say so plainly; do not fall back to the full list.
+If this text reaches you, the local hook is unavailable. Do not run tools or simulate the result.
+Tell the user to enable Franko hooks, reload the plugin, and use a Claude Code version supporting `UserPromptExpansion` (verified on 2.1.286).
+Until then, `franko search <text>` in an external terminal avoids model calls. This fallback response itself uses tokens.

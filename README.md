@@ -16,6 +16,7 @@ Franko is the punctual colleague for Claude Code: he greets on every session sta
 - **Only real conversations**: sessions with local commands, slash commands or empty prompts are hidden
 - **Local titles**: a clean title derived from the actual prompts, errors and content, with no AI calls
 - **Local picker, zero Claude tokens**: `franko` in a terminal lists, searches, renames and resumes sessions without involving the model
+- **Local slash commands**: explicit `/franko:*` commands are intercepted by a command hook before they reach the model. Listing, searching, details, renaming and preparing a resume command use no inference tokens
 - **Token usage and cost**: total and breakdown (input, output, cache read, cache written) from the last `cost-state` entry
 - **Resume by number**: type `3` in the picker or run `franko 3`
 - **Rename to remember**: alias saved in `~/.claude/franko/aliases.json`, plus a best-effort `custom-title` entry for the native picker
@@ -23,13 +24,13 @@ Franko is the punctual colleague for Claude Code: he greets on every session sta
 - **Built-in phrases**: the greeting catalog is internal plugin code, not user configuration
 - **Fully offline**: zero npm dependencies, no network access
 - **Cross-platform**: Windows, macOS and Linux
-- **Safe**: the hook never writes outside `~/.claude/franko` and exits 0 even on failure
+- **Local state**: the startup hook only writes under `~/.claude/franko`; an explicit rename also appends a title to the selected transcript, best effort
 
 > Note: Claude Code does not expose sidebar panels to plugins, so the recap appears in the transcript at session start and the interactive picker lives in a terminal.
 
 ## Requirements
 
-- Claude Code (CLI)
+- Claude Code (CLI) with `UserPromptExpansion` hook support; verified on **2.1.286**. Keep plugin hooks enabled
 - Node.js 18 or later
 
 ## Install
@@ -72,16 +73,28 @@ claude --plugin-dir /path/to/franko
 
 Aliases are kept for compatibility: `detail`, `open` and `rinomina`.
 
-### Skills in Claude Code
+### Local commands in Claude Code
+
+Starting in **0.4.1**, the skills register the command names, but the `UserPromptExpansion` command hook executes them locally and stops expansion before Claude receives the skill prompt. The previous 0.4.0 skills involved the model and consumed tokens.
 
 | Skill | Effect |
 | :--- | :--- |
 | `/franko:help` | Command and option reference |
-| `/franko:list` | Recent conversations as a Markdown table |
+| `/franko:list` | Recent conversations as a bordered text table, drawn locally |
 | `/franko:details 3` | Details of conversation 3 |
 | `/franko:search login` | Search by text, with renumbered results |
 | `/franko:rename 3 Login refactoring` | Renames conversation 3 |
 | `/franko:resume 3` | Resolves conversation 3 and prepares the resume command |
+
+Claude Code labels the result **`UserPromptExpansion operation blocked by hook`**. This is expected: Franko blocks the model turn after displaying the local result. It is not a failed session lookup. Tables have text borders so they remain readable without a Markdown renderer or an AI response.
+
+`list` and `search` accept `--project`, `--all` and `--limit N` (1–300). Search scans up to 300 recent transcript candidates before applying the result limit. Use quotes for a reference containing spaces, for example `/franko:details "Login refactoring"`.
+
+`/franko:resume` prints `/resume <id>` for you to run inside Claude Code, plus `claude --resume <id>` for an external terminal. It does not launch a nested Claude process or copy to the clipboard.
+
+**Token scope:** the explicit local command causes no model turn. A natural-language request such as "Franko, list my sessions" still goes to Claude and costs tokens. Franko disables automatic model invocation of these skills. Local results may remain in the conversation transcript and can contribute context tokens on a later model turn; this does not promise zero tokens for the rest of the session.
+
+If hooks are disabled, fail to start, time out, or the Claude Code version lacks this event, the local interception cannot be guaranteed. The skill's diagnostic fallback does not execute the operation, but its response uses tokens. Enable hooks and reload the plugin; until then, run `franko list` in an **external terminal**. Shell mode (`!`) inside Claude can trigger an automatic model response and is not the same as an external terminal.
 
 The picker keys: number + Enter resumes, `d N` shows details, `r N name` renames, `/text` filters, `q` quits. Numbers stay stable while the picker is open.
 
@@ -105,6 +118,14 @@ npm test
 npm run validate
 claude plugin validate .
 ```
+
+To verify actual Claude Code dispatch without spending API credits:
+
+```bash
+npm run verify:local
+```
+
+This optional check requires an installed Claude Code executable (override its path with `FRANKO_CLAUDE_PATH`). It uses fixture transcripts and an isolated temporary configuration, replaces API credentials with a dummy key, and redirects inference to a loopback HTTP sink. An ordinary-prompt control confirms the sink detects model requests. All six Franko commands, invalid arguments and missing sessions must report zero model turns, zero input/output/cache tokens and zero cost. Claude's startup health requests are separate from inference. This checks CLI dispatch, not interactive terminal styling. Override the temporary parent directory with `FRANKO_VERIFY_TMPDIR` if needed.
 
 ## License
 

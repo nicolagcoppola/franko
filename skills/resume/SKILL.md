@@ -1,17 +1,15 @@
 ---
 name: resume
-description: Resolve a franko session number or name and prepare the claude --resume command to reopen it. Use when the user asks to open or resume a recent conversation.
-allowed-tools: Bash(node:*)
+description: Prepare the native resume command locally. Invoke explicitly; handled before the model.
+argument-hint: '<number|"name">'
+disable-model-invocation: true
 ---
 
 # franko:resume
 
-Run:
+The plugin's `UserPromptExpansion` hook handles this command locally and blocks model execution.
+It prints `/resume <id>` and `claude --resume <id>` without starting a nested Claude process or changing the clipboard.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/franko.mjs" command $ARGUMENTS --clip
-```
-
-Report the output as-is.
-
-Important rule: a plugin cannot switch the active conversation from inside the chat. The `claude --resume <id>` command must be pasted in the terminal. If the clipboard is unavailable, show the command for manual copy. In the terminal, `franko <number>` resumes directly without chat.
+If this text reaches you, the local hook is unavailable. Do not run tools or simulate the result.
+Tell the user to enable Franko hooks, reload the plugin, and use a Claude Code version supporting `UserPromptExpansion` (verified on 2.1.286).
+Until then, `franko command <number>` in an external terminal avoids model calls. This fallback response itself uses tokens.
