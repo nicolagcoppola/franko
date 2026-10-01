@@ -67,7 +67,8 @@ test("hook startup prints a systemMessage with greeting and recap", () => {
   const payload = JSON.parse(result.stdout);
   assert.ok(GREETINGS.startup.some((phrase) => payload.systemMessage.includes(phrase)));
   assert.match(payload.systemMessage, /Sistemare il recap di franko/);
-  assert.match(payload.systemMessage, /\/franko:recenti/);
+  assert.match(payload.systemMessage, /\| # \| Title \| Project \| Last activity \| Tokens \|/);
+  assert.match(payload.systemMessage, /\/franko:list/);
 });
 
 test("hook maps resume and clear sources", () => {
@@ -100,7 +101,7 @@ test("list shows titles without ids and supports --json", () => {
   assert.equal(text.status, 0, text.stderr);
   assert.match(text.stdout, /Sistemare il recap di franko/);
   assert.doesNotMatch(text.stdout, /aaaaaaaa-1111/);
-  assert.match(text.stdout, /franko detail/);
+  assert.match(text.stdout, /franko details/);
   const json = run(["list", "--json"], { configDir });
   assert.equal(json.status, 0, json.stderr);
   const sessions = JSON.parse(json.stdout);
@@ -114,7 +115,7 @@ test("detail prints the full resume command", () => {
   const result = run(["detail", "1"], { configDir });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /claude --resume aaaaaaaa-1111/);
-  assert.match(result.stdout, /Consumo: non disponibile/);
+  assert.match(result.stdout, /Consumption: not available/);
 });
 
 test("list --project filters to the current directory", () => {
@@ -178,4 +179,66 @@ test("rinomina stores an alias shown by list", () => {
   assert.equal(aliases["aaaaaaaa-1111"], "Fix del parser");
   const list = run(["list"], { configDir });
   assert.match(list.stdout, /Fix del parser/);
+});
+
+test("rename stores an alias shown by list", () => {
+  const configDir = withSession();
+  run(["list"], { configDir });
+  const rename = run(["rename", "1", "Login", "refactoring"], { configDir });
+  assert.equal(rename.status, 0, rename.stderr);
+  assert.match(rename.stdout, /Renamed session/);
+  const list = run(["list"], { configDir });
+  assert.match(list.stdout, /Login refactoring/);
+});
+
+test("details resolves a number from the snapshot", () => {
+  const configDir = withSession();
+  run(["list"], { configDir });
+  const result = run(["details", "1"], { configDir });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Session: aaaaaaaa-1111/);
+  assert.match(result.stdout, /Resume: claude --resume aaaaaaaa-1111/);
+});
+
+test("search filters the list, renumbers the snapshot and resume follows it", () => {
+  const configDir = withTwoSessions();
+  const search = run(["search", "sistemare", "--md"], { configDir });
+  assert.equal(search.status, 0, search.stderr);
+  assert.match(search.stdout, /\| # \| Title \| Project \| Last activity \| Tokens \|/);
+  assert.match(search.stdout, /Sistemare il recap di franko/);
+  assert.doesNotMatch(search.stdout, /seconda sessione/);
+  const resume = run(["resume", "1", "--dry-run"], { configDir });
+  assert.equal(resume.status, 0, resume.stderr);
+  assert.equal(resume.stdout.trim(), "claude --resume aaaaaaaa-1111");
+});
+
+test("search without a query fails with usage", () => {
+  const configDir = withSession();
+  const result = run(["search"], { configDir });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: franko search/);
+});
+
+test("resume without a reference fails with usage", () => {
+  const configDir = withSession();
+  const result = run(["resume"], { configDir });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Usage: franko resume/);
+});
+
+test("list --md prints a markdown table", () => {
+  const configDir = withSession();
+  const result = run(["list", "--md"], { configDir });
+  assert.equal(result.status, 0, result.stderr);
+  const lines = result.stdout.split("\n");
+  assert.equal(lines[0], "| # | Title | Project | Last activity | Tokens |");
+  assert.match(lines[2], /Sistemare il recap di franko/);
+});
+
+test("help lists the full command set", () => {
+  const result = run(["help"]);
+  assert.equal(result.status, 0);
+  for (const command of ["franko list", "franko details", "franko search", "franko resume", "franko rename"]) {
+    assert.ok(result.stdout.includes(command), command);
+  }
 });

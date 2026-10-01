@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pickGreeting } from "../lib/greetings.mjs";
 import { listSessions } from "../lib/sessions.mjs";
-import { buildRecapMessage, formatDetail, formatTable } from "../lib/format.mjs";
+import { buildRecapMessage, formatDetail, formatMarkdownTable, formatTable } from "../lib/format.mjs";
 import { applyAliases, readAliases, readSnapshot, writeAliases, writeSnapshot } from "../lib/state.mjs";
 import { filterSessions, parsePickerCommand } from "../lib/picker.mjs";
 
@@ -16,26 +16,31 @@ const STEP_BY_SOURCE = {
 };
 
 const LIST_FOOTER =
-  "Riprendi: franko <numero> · Dettagli: franko detail <numero> · Selettore: franko · JSON: franko list --json";
-const PICKER_FOOTER = "Numero + Invio: riprendi · d 2: dettagli · r 2: rinomina · /testo: cerca · q: esci";
+  "Resume: franko <number> · Details: franko details <number> · Picker: franko · JSON: franko list --json";
+const PICKER_FOOTER = "Number + Enter: resume · d 2: details · r 2: rename · /text: search · q: quit";
 
-const HELP = `franko - il collega preciso di Claude Code
+const HELP = `franko - the punctual colleague for Claude Code
 
-Uso:
-  franko                          Apre il selettore locale (nessun consumo di token)
-  franko hook                     Modalita' hook SessionStart (legge JSON da stdin)
-  franko list [opzioni]           Elenca le ultime conversazioni, tutti i progetti
-  franko detail <numero|nome>     Mostra i dettagli di una conversazione
-  franko open <numero|nome>       Riprende la sessione (lancia claude --resume)
-  franko command <numero|nome>    Stampa il comando di ripresa (--clip per copiarlo)
-  franko rinomina <numero|nome> <nuovo nome>
-  franko <numero>                 Scorciatoia per open
+Usage:
+  franko                          Open the local picker (no Claude tokens)
+  franko help                     Show this help
+  franko list [options]           List recent conversations from every project
+  franko details <number|name>    Show title, project, consumption and prompts
+  franko search <text>            Search conversations and number the results
+  franko resume <number|name>     Resume a session (runs claude --resume)
+  franko rename <number|name> <new name>
+  franko command <number|name>    Print the resume command (--clip to copy it)
+  franko <number>                 Shortcut for resume
+  franko hook                     SessionStart hook mode (reads JSON from stdin)
 
-Opzioni di list:
-  --project   Solo il progetto corrente
-  --all       Includi anche conversazioni senza contenuto reale
-  --limit N   Numero di conversazioni (predefinito 10)
-  --json      Output JSON
+List and search options:
+  --project   Current project only
+  --all       Include conversations without real content
+  --limit N   Number of conversations (default 10)
+  --md        Markdown table output
+  --json      JSON output
+
+Aliases kept for compatibility: detail (details), open (resume), rinomina (rename).
 `;
 
 function readStdin() {
@@ -83,7 +88,7 @@ function runHook() {
 }
 
 function parseListArgs(args) {
-  const options = { limit: 10, json: false, projectDir: undefined, includeEmpty: false };
+  const options = { limit: 10, json: false, markdown: false, projectDir: undefined, includeEmpty: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--project") {
@@ -96,20 +101,59 @@ function parseListArgs(args) {
       index += 1;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--md") {
+      options.markdown = true;
     }
   }
   return options;
+}
+
+function parseSearchArgs(args) {
+  const options = parseListArgs(args);
+  const terms = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--limit") {
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    terms.push(arg);
+  }
+  options.query = terms.join(" ").trim();
+  return options;
+}
+
+function outputSessions(sessions, options, footer) {
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(sessions, null, 2)}\n`);
+    return;
+  }
+  if (options.markdown) {
+    process.stdout.write(`${formatMarkdownTable(sessions)}\n`);
+    if (footer) process.stdout.write(`\n${footer}\n`);
+    return;
+  }
+  process.stdout.write(`${formatTable(sessions, { footer })}\n`);
 }
 
 function runList(args) {
   const options = parseListArgs(args);
   const sessions = loadSessions(options);
   writeSnapshot(sessions, options.configDir, options.env);
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify(sessions, null, 2)}\n`);
+  outputSessions(sessions, options, LIST_FOOTER);
+}
+
+function runSearch(args) {
+  const options = parseSearchArgs(args);
+  if (!options.query) {
+    process.stderr.write("Usage: franko search <text>\n");
+    process.exitCode = 1;
     return;
   }
-  process.stdout.write(`${formatTable(sessions, { footer: LIST_FOOTER })}\n`);
+  const sessions = filterSessions(loadSessions(options), options.query);
+  writeSnapshot(sessions, options.configDir, options.env);
+  outputSessions(sessions, options, LIST_FOOTER);
 }
 
 function resolveReference(ref, options = {}) {
@@ -175,17 +219,17 @@ function firstRef(args) {
   return args.find((arg) => !arg.startsWith("-")) || null;
 }
 
-function runOpen(args) {
+function runResume(args) {
   const dryRun = args.includes("--dry-run");
   const ref = firstRef(args);
   if (!ref) {
-    process.stderr.write("Uso: franko open <numero|nome>\n");
+    process.stderr.write("Usage: franko resume <number|name>\n");
     process.exitCode = 1;
     return;
   }
   const target = resolveReference(ref);
   if (!target) {
-    process.stderr.write(`Sessione non trovata: ${ref}\n`);
+    process.stderr.write(`Session not found: ${ref}\n`);
     process.exitCode = 1;
     return;
   }
@@ -196,16 +240,16 @@ function runOpen(args) {
   launchResume(target.sessionId);
 }
 
-function runDetail(args) {
+function runDetails(args) {
   const ref = firstRef(args);
   if (!ref) {
-    process.stderr.write("Uso: franko detail <numero|nome>\n");
+    process.stderr.write("Usage: franko details <number|name>\n");
     process.exitCode = 1;
     return;
   }
   const target = resolveReference(ref);
   if (!target) {
-    process.stderr.write(`Sessione non trovata: ${ref}\n`);
+    process.stderr.write(`Session not found: ${ref}\n`);
     process.exitCode = 1;
     return;
   }
@@ -216,25 +260,25 @@ function runCommand(args) {
   const clip = args.includes("--clip");
   const ref = firstRef(args);
   if (!ref) {
-    process.stderr.write("Uso: franko command <numero|nome> [--clip]\n");
+    process.stderr.write("Usage: franko command <number|name> [--clip]\n");
     process.exitCode = 1;
     return;
   }
   const target = resolveReference(ref);
   if (!target) {
-    process.stderr.write(`Sessione non trovata: ${ref}\n`);
+    process.stderr.write(`Session not found: ${ref}\n`);
     process.exitCode = 1;
     return;
   }
   const command = `claude --resume ${target.sessionId}`;
-  process.stdout.write(`Sessione: ${target.displayName || target.name || target.sessionId}\n`);
-  process.stdout.write(`Comando: ${command}\n`);
+  process.stdout.write(`Session: ${target.displayName || target.name || target.sessionId}\n`);
+  process.stdout.write(`Command: ${command}\n`);
   if (clip && process.platform === "win32") {
     const result = spawnSync("clip", [], { input: command });
     if (!result.error && result.status === 0) {
-      process.stdout.write("Comando copiato negli appunti: incollalo nel terminale.\n");
+      process.stdout.write("Command copied to the clipboard: paste it in the terminal.\n");
     } else {
-      process.stdout.write("Appunti non disponibili: copia il comando a mano.\n");
+      process.stdout.write("Clipboard unavailable: copy the command manually.\n");
     }
   }
 }
@@ -262,25 +306,25 @@ function runRename(args) {
   const ref = args[0];
   const name = args.slice(1).join(" ").trim();
   if (!ref || !name) {
-    process.stderr.write("Uso: franko rinomina <numero|nome> <nuovo nome>\n");
+    process.stderr.write("Usage: franko rename <number|name> <new name>\n");
     process.exitCode = 1;
     return;
   }
   const target = resolveReference(ref);
   if (!target) {
-    process.stderr.write(`Sessione non trovata: ${ref}\n`);
+    process.stderr.write(`Session not found: ${ref}\n`);
     process.exitCode = 1;
     return;
   }
   renameSession(target.sessionId, name);
-  process.stdout.write(`Sessione rinominata: "${name}" -> ${target.sessionId}\n`);
+  process.stdout.write(`Renamed session: "${name}" -> ${target.sessionId}\n`);
 }
 
 async function runPicker() {
   const readline = await import("node:readline/promises");
   let sessions = loadSessions({ limit: 20 }).map((session, index) => ({ ...session, number: index + 1 }));
   if (sessions.length === 0) {
-    process.stdout.write("Nessuna conversazione trovata.\n");
+    process.stdout.write("No conversations found.\n");
     return;
   }
   writeSnapshot(sessions);
@@ -290,8 +334,8 @@ async function runPicker() {
     for (;;) {
       const visible = filterSessions(sessions, query);
       process.stdout.write(`\n${formatTable(visible, { footer: PICKER_FOOTER })}\n`);
-      if (query) process.stdout.write(`Filtro attivo: /${query}\n`);
-      const answer = await rl.question("Scelta: ");
+      if (query) process.stdout.write(`Active filter: /${query}\n`);
+      const answer = await rl.question("Choice: ");
       const command = parsePickerCommand(answer, 100000);
       if (command.type === "quit") break;
       if (command.type === "list") {
@@ -308,7 +352,7 @@ async function runPicker() {
       }
       const session = visible.find((item) => item.number === command.index + 1);
       if (!session) {
-        process.stdout.write("numero fuori intervallo\n");
+        process.stdout.write("number out of range\n");
         continue;
       }
       if (command.type === "detail") {
@@ -319,7 +363,7 @@ async function runPicker() {
         renameSession(session.sessionId, command.name);
         const aliases = readAliases();
         sessions = applyAliases(sessions, aliases).map((item, index) => ({ ...item, number: index + 1 }));
-        process.stdout.write(`Rinominata: "${command.name}"\n`);
+        process.stdout.write(`Renamed: "${command.name}"\n`);
         continue;
       }
       if (command.type === "open") {
@@ -335,23 +379,24 @@ async function runPicker() {
 
 async function main() {
   const [requested, ...rest] = process.argv.slice(2);
-  if (requested === "--help" || requested === "-h") {
+  if (requested === "--help" || requested === "-h" || requested === "help") {
     process.stdout.write(HELP);
     return;
   }
   if (requested === "hook") return runHook();
   if (requested === "list") return runList(rest);
-  if (requested === "detail") return runDetail(rest);
-  if (requested === "open") return runOpen(rest);
+  if (requested === "search") return runSearch(rest);
+  if (requested === "detail" || requested === "details") return runDetails(rest);
+  if (requested === "open" || requested === "resume") return runResume(rest);
   if (requested === "command") return runCommand(rest);
-  if (requested === "rinomina") return runRename(rest);
+  if (requested === "rinomina" || requested === "rename") return runRename(rest);
   if (requested === "pick") return runPicker();
   if (!requested) {
     if (process.stdin.isTTY) return runPicker();
     return runList(rest);
   }
   if (requested.startsWith("-")) return runList(process.argv.slice(2));
-  if (/^\d+$/.test(requested)) return runOpen([requested, ...rest]);
+  if (/^\d+$/.test(requested)) return runResume([requested, ...rest]);
   return runList([requested, ...rest]);
 }
 

@@ -1,22 +1,18 @@
 # franko
 
-Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear, and gives you a local picker with the real conversations of every project, complete with titles, token usage and resume commands.
+Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear with a recap of your recent conversations as a Markdown table, and gives you a local picker with the real conversations of every project, complete with titles, token usage and resume commands.
 
 ```text
-FRANKO · Sessioni recenti
-5 conversazioni · 2 progetti
-
-  #   Titolo                                                    Progetto     Ultima attività  Token
-  1   Configurazione workspace API Anthropic                    Nicola       5g fa          344k
-  2   Idee per plugin Claude Code e OpenCode                    rockspinner  6g fa          278k
-  3   Prove del nuovo spinner                                   Nicola       1 sett fa      317k
-
-Numero + Invio: riprendi · d 2: dettagli · r 2: rinomina · /testo: cerca · q: esci
+| # | Title                                        | Project     | Last activity | Tokens |
+| --- | --- | --- | --- | --- |
+| 1 | Configurazione workspace API Anthropic       | Nicola      | 5d ago        | 344k   |
+| 2 | Idee per plugin Claude Code e OpenCode       | rockspinner | 6d ago        | 278k   |
+| 3 | Prove del nuovo spinner                      | Nicola      | 1w ago        | 317k   |
 ```
 
 ## Features
 
-- **Greeting on every entry point**: `startup`, `resume` and `/clear` through a `SessionStart` hook
+- **Greeting on every entry point**: `startup`, `resume` and `/clear` through a `SessionStart` hook, with the recent sessions rendered as a Markdown table
 - **Only real conversations**: sessions with local commands, slash commands or empty prompts are hidden
 - **Local titles**: a clean title derived from the actual prompts, errors and content, with no AI calls
 - **Local picker, zero Claude tokens**: `franko` in a terminal lists, searches, renames and resumes sessions without involving the model
@@ -67,26 +63,40 @@ claude --plugin-dir /path/to/franko
 | :--- | :--- |
 | `franko` | Local picker: list, search, detail, rename and resume without Claude tokens |
 | `franko 3` | Resumes conversation 3 directly |
-| `franko list` | Non-interactive list (`--project`, `--all`, `--limit N`, `--json`) |
-| `franko detail 3` | Full detail: id, path, token breakdown, prompts, last reply |
-| `franko rinomina 3 nome` | Renames conversation 3 |
+| `franko list` | Non-interactive list (`--project`, `--all`, `--limit N`, `--md`, `--json`) |
+| `franko search login` | Searches titles, projects and paths, then renumbers the results |
+| `franko details 3` | Full detail: id, path, token breakdown, prompts, last reply |
+| `franko resume 3` | Resumes conversation 3 (same as the bare number) |
+| `franko rename 3 "Login refactoring"` | Renames conversation 3 |
 | `franko command 3 --clip` | Copies `claude --resume <id>` to the clipboard |
-| `/franko:recenti` | Skill version of the list (uses Claude tokens) |
-| `/franko:apri 3` | Resolves number 3 and prepares the resume command |
-| `/franko:rinnomina 3 nome` | Skill version of the rename |
+
+Aliases are kept for compatibility: `detail`, `open` and `rinomina`.
+
+### Skills in Claude Code
+
+| Skill | Effect |
+| :--- | :--- |
+| `/franko:help` | Command and option reference |
+| `/franko:list` | Recent conversations as a Markdown table |
+| `/franko:details 3` | Details of conversation 3 |
+| `/franko:search login` | Search by text, with renumbered results |
+| `/franko:rename 3 Login refactoring` | Renames conversation 3 |
+| `/franko:resume 3` | Resolves conversation 3 and prepares the resume command |
 
 The picker keys: number + Enter resumes, `d N` shows details, `r N name` renames, `/text` filters, `q` quits. Numbers stay stable while the picker is open.
+
+The greetings stay in Italian; the commands, options and interface are in English.
 
 ## How it works
 
 - **Real conversations only**: a session is listed when at least one prompt is meaningful. Slash commands, local command output, pasted-only placeholders and empty messages are ignored, even if the session spent tokens.
 - **Titles**, in priority order: your alias, a `custom-title` or `summary` entry, then a locally derived title. The derivation strips fillers, resolves quoted errors as `Errore: ...` and truncates at a word boundary.
-- **Tokens** come from the last `cost-state` entry: totals plus input, output, cache read and cache written. When data is missing, Franko says "non disponibile" instead of showing zero.
-- **Numbers** are stored in a snapshot (`~/.claude/franko/last-list.json`), so `franko 3` keeps matching the list you just saw.
+- **Tokens** come from the last `cost-state` entry: totals plus input, output, cache read and cache written. When data is missing, Franko says "not available" instead of showing zero.
+- **Numbers** are stored in a snapshot (`~/.claude/franko/last-list.json`), so `franko 3` keeps matching the list you just saw. `franko search` saves its own numbering.
 - **Aliases** live in `~/.claude/franko/aliases.json`. Renaming also appends a `custom-title` entry to the transcript, best effort: if your Claude Code version does not read it, the Franko alias still works.
 - **Cache**: parsed transcript heads and tails are cached in `~/.claude/franko/cache.json` and invalidated by file size and mtime.
 
-The transcript format is internal to Claude Code and may change; the reader is tolerant and falls back gracefully.
+The transcript format is internal to Claude Code and may change; the reader is tolerant and falls back gracefully. The Markdown recap depends on how Claude Code renders hook messages: if a version shows it as plain text, the terminal picker remains the reference interface.
 
 ## Development
 

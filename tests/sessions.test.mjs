@@ -157,7 +157,7 @@ test("listSessions names sessions from history and hides command-only ones", () 
   const withEmpty = listSessions({ configDir, includeEmpty: true });
   assert.equal(withEmpty.length, 2);
   const empty = withEmpty.find((session) => session.sessionId === "bbbb2222-0000");
-  assert.equal(empty.name, "(solo comandi locali)");
+  assert.equal(empty.name, "(local commands only)");
   assert.equal(empty.hasContent, false);
 });
 
