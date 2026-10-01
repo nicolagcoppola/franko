@@ -9,8 +9,8 @@
     {
       "name": "franko",
       "source": "./",
-      "description": "Greets on every session start and recaps the latest Claude Code sessions with names, token usage and resume commands.",
-      "version": "0.2.0",
+      "description": "Greets on every session start and offers a local session picker with real titles, token usage and resume commands.",
+      "version": "0.3.0",
       "license": "MIT",
       "keywords": [
         "sessions",

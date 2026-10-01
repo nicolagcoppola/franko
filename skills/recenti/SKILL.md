@@ -1,6 +1,6 @@
 ---
 name: recenti
-description: Elenca le ultime sessioni di Claude Code su tutti i progetti, con nome, token consumati e comando per riprenderle. Usa quando l'utente chiede di vedere o riprendere sessioni recenti.
+description: Elenca le ultime conversazioni di Claude Code su tutti i progetti, con titolo, token consumati e comando per riprenderle. Usa quando l'utente chiede di vedere o riprendere sessioni recenti.
 allowed-tools: Bash(node:*)
 ---
 
@@ -16,7 +16,7 @@ Opzioni:
 
 - Solo progetto corrente: `--project`
 - Includi anche sessioni senza contenuto reale: `--all`
-- Numero di sessioni: `--limit 20`
+- Numero di conversazioni: `--limit 20`
 - Output JSON: `--json`
 
 Regole:
@@ -25,4 +25,5 @@ Regole:
 - I numeri della lista sono gli stessi usati da `/franko:apri <numero>` e da `franko <numero>` nel terminale.
 - Per cambiare nome a una sessione: `/franko:rinnomina <numero> <nome>`.
 - Per riprendere: `/franko:apri <numero>` prepara il comando, oppure `claude --resume <id>` nel terminale.
+- Consultazione senza consumo di token: l'utente apre il selettore locale con `franko` nel terminale. Usare questa skill solo quando serve l'interpretazione di Claude.
 - Se `${CLAUDE_PLUGIN_ROOT}` non viene espanso, cerca la cartella `franko` nella cache dei plugin sotto `~/.claude/plugins/` e usa lo stesso percorso.

@@ -66,7 +66,7 @@ test("hook startup prints a systemMessage with greeting and recap", () => {
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.ok(GREETINGS.startup.some((phrase) => payload.systemMessage.includes(phrase)));
-  assert.match(payload.systemMessage, /sistemare il recap di franko/);
+  assert.match(payload.systemMessage, /Sistemare il recap di franko/);
   assert.match(payload.systemMessage, /\/franko:recenti/);
 });
 
@@ -94,17 +94,27 @@ test("hook tolerates invalid stdin", () => {
   assert.ok(GREETINGS.startup.some((phrase) => payload.systemMessage.includes(phrase)));
 });
 
-test("list prints resume commands and supports --json", () => {
+test("list shows titles without ids and supports --json", () => {
   const configDir = withSession();
   const text = run(["list"], { configDir });
   assert.equal(text.status, 0, text.stderr);
-  assert.match(text.stdout, /claude --resume aaaaaaaa-1111/);
-  assert.ok(GREETINGS.list.some((phrase) => text.stdout.includes(phrase)));
+  assert.match(text.stdout, /Sistemare il recap di franko/);
+  assert.doesNotMatch(text.stdout, /aaaaaaaa-1111/);
+  assert.match(text.stdout, /franko detail/);
   const json = run(["list", "--json"], { configDir });
   assert.equal(json.status, 0, json.stderr);
   const sessions = JSON.parse(json.stdout);
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].sessionId, "aaaaaaaa-1111");
+});
+
+test("detail prints the full resume command", () => {
+  const configDir = withSession();
+  run(["list"], { configDir });
+  const result = run(["detail", "1"], { configDir });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /claude --resume aaaaaaaa-1111/);
+  assert.match(result.stdout, /Consumo: non disponibile/);
 });
 
 test("list --project filters to the current directory", () => {

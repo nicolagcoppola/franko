@@ -5,8 +5,9 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pickGreeting } from "../lib/greetings.mjs";
 import { listSessions } from "../lib/sessions.mjs";
-import { buildRecapMessage, formatList } from "../lib/format.mjs";
+import { buildRecapMessage, formatDetail, formatTable } from "../lib/format.mjs";
 import { applyAliases, readAliases, readSnapshot, writeAliases, writeSnapshot } from "../lib/state.mjs";
+import { filterSessions, parsePickerCommand } from "../lib/picker.mjs";
 
 const STEP_BY_SOURCE = {
   startup: "startup",
@@ -14,11 +15,17 @@ const STEP_BY_SOURCE = {
   clear: "clear",
 };
 
+const LIST_FOOTER =
+  "Riprendi: franko <numero> · Dettagli: franko detail <numero> · Selettore: franko · JSON: franko list --json";
+const PICKER_FOOTER = "Numero + Invio: riprendi · d 2: dettagli · r 2: rinomina · /testo: cerca · q: esci";
+
 const HELP = `franko - il collega preciso di Claude Code
 
 Uso:
+  franko                          Apre il selettore locale (nessun consumo di token)
   franko hook                     Modalita' hook SessionStart (legge JSON da stdin)
-  franko list [opzioni]           Elenca le ultime sessioni, tutti i progetti
+  franko list [opzioni]           Elenca le ultime conversazioni, tutti i progetti
+  franko detail <numero|nome>     Mostra i dettagli di una conversazione
   franko open <numero|nome>       Riprende la sessione (lancia claude --resume)
   franko command <numero|nome>    Stampa il comando di ripresa (--clip per copiarlo)
   franko rinomina <numero|nome> <nuovo nome>
@@ -26,8 +33,8 @@ Uso:
 
 Opzioni di list:
   --project   Solo il progetto corrente
-  --all       Includi anche sessioni senza contenuto reale
-  --limit N   Numero di sessioni (predefinito 10)
+  --all       Includi anche conversazioni senza contenuto reale
+  --limit N   Numero di conversazioni (predefinito 10)
   --json      Output JSON
 `;
 
@@ -102,22 +109,27 @@ function runList(args) {
     process.stdout.write(`${JSON.stringify(sessions, null, 2)}\n`);
     return;
   }
-  process.stdout.write(`${formatList(sessions, pickGreeting("list"))}\n`);
+  process.stdout.write(`${formatTable(sessions, { footer: LIST_FOOTER })}\n`);
 }
 
 function resolveReference(ref, options = {}) {
   const aliases = readAliases(options.configDir, options.env);
+  const sessions = applyAliases(listSessions({ ...options, includeEmpty: true }), aliases);
   if (/^\d+$/.test(ref)) {
     const index = Number(ref) - 1;
     const snapshot = readSnapshot(options.configDir, options.env);
-    if (snapshot && index >= 0 && index < snapshot.sessions.length) {
-      return snapshot.sessions[index];
+    const entry = snapshot && snapshot.sessions ? snapshot.sessions[index] : null;
+    if (entry) {
+      return (
+        sessions.find((session) => session.sessionId === entry.sessionId) || {
+          sessionId: entry.sessionId,
+          displayName: entry.displayName,
+          name: entry.displayName,
+        }
+      );
     }
-    const sessions = applyAliases(listSessions({ ...options, includeEmpty: true }), aliases);
-    const session = sessions[index];
-    return session ? { sessionId: session.sessionId, displayName: session.displayName } : null;
+    return sessions[index] || null;
   }
-  const sessions = applyAliases(listSessions({ ...options, includeEmpty: true }), aliases);
   const needle = ref.toLowerCase();
   return (
     sessions.find(
@@ -150,9 +162,22 @@ function findClaude() {
   return "claude";
 }
 
+function launchResume(sessionId) {
+  const binary = findClaude();
+  const result = spawnSync(binary, ["--resume", sessionId], {
+    stdio: "inherit",
+    shell: process.platform === "win32" && /\.cmd$/i.test(binary),
+  });
+  process.exitCode = typeof result.status === "number" ? result.status : 1;
+}
+
+function firstRef(args) {
+  return args.find((arg) => !arg.startsWith("-")) || null;
+}
+
 function runOpen(args) {
   const dryRun = args.includes("--dry-run");
-  const ref = args.find((arg) => !arg.startsWith("-"));
+  const ref = firstRef(args);
   if (!ref) {
     process.stderr.write("Uso: franko open <numero|nome>\n");
     process.exitCode = 1;
@@ -168,17 +193,28 @@ function runOpen(args) {
     process.stdout.write(`claude --resume ${target.sessionId}\n`);
     return;
   }
-  const binary = findClaude();
-  const result = spawnSync(binary, ["--resume", target.sessionId], {
-    stdio: "inherit",
-    shell: process.platform === "win32" && /\.cmd$/i.test(binary),
-  });
-  process.exitCode = typeof result.status === "number" ? result.status : 1;
+  launchResume(target.sessionId);
+}
+
+function runDetail(args) {
+  const ref = firstRef(args);
+  if (!ref) {
+    process.stderr.write("Uso: franko detail <numero|nome>\n");
+    process.exitCode = 1;
+    return;
+  }
+  const target = resolveReference(ref);
+  if (!target) {
+    process.stderr.write(`Sessione non trovata: ${ref}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(`${formatDetail(target)}\n`);
 }
 
 function runCommand(args) {
   const clip = args.includes("--clip");
-  const ref = args.find((arg) => !arg.startsWith("-"));
+  const ref = firstRef(args);
   if (!ref) {
     process.stderr.write("Uso: franko command <numero|nome> [--clip]\n");
     process.exitCode = 1;
@@ -191,7 +227,7 @@ function runCommand(args) {
     return;
   }
   const command = `claude --resume ${target.sessionId}`;
-  process.stdout.write(`Sessione: ${target.displayName || target.sessionId}\n`);
+  process.stdout.write(`Sessione: ${target.displayName || target.name || target.sessionId}\n`);
   process.stdout.write(`Comando: ${command}\n`);
   if (clip && process.platform === "win32") {
     const result = spawnSync("clip", [], { input: command });
@@ -215,6 +251,13 @@ function appendCustomTitle(sessionId, name) {
   }
 }
 
+function renameSession(sessionId, name) {
+  const aliases = readAliases();
+  aliases[sessionId] = name;
+  writeAliases(aliases);
+  appendCustomTitle(sessionId, name);
+}
+
 function runRename(args) {
   const ref = args[0];
   const name = args.slice(1).join(" ").trim();
@@ -229,17 +272,68 @@ function runRename(args) {
     process.exitCode = 1;
     return;
   }
-  const aliases = readAliases();
-  aliases[target.sessionId] = name;
-  writeAliases(aliases);
-  const appended = appendCustomTitle(target.sessionId, name);
+  renameSession(target.sessionId, name);
   process.stdout.write(`Sessione rinominata: "${name}" -> ${target.sessionId}\n`);
-  if (appended) {
-    process.stdout.write("Titolo scritto anche nel transcript (il picker nativo puo' mostrarlo).\n");
+}
+
+async function runPicker() {
+  const readline = await import("node:readline/promises");
+  let sessions = loadSessions({ limit: 20 }).map((session, index) => ({ ...session, number: index + 1 }));
+  if (sessions.length === 0) {
+    process.stdout.write("Nessuna conversazione trovata.\n");
+    return;
+  }
+  writeSnapshot(sessions);
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  let query = "";
+  try {
+    for (;;) {
+      const visible = filterSessions(sessions, query);
+      process.stdout.write(`\n${formatTable(visible, { footer: PICKER_FOOTER })}\n`);
+      if (query) process.stdout.write(`Filtro attivo: /${query}\n`);
+      const answer = await rl.question("Scelta: ");
+      const command = parsePickerCommand(answer, 100000);
+      if (command.type === "quit") break;
+      if (command.type === "list") {
+        query = "";
+        continue;
+      }
+      if (command.type === "search") {
+        query = command.query;
+        continue;
+      }
+      if (command.type === "invalid") {
+        process.stdout.write(`${command.reason}\n`);
+        continue;
+      }
+      const session = visible.find((item) => item.number === command.index + 1);
+      if (!session) {
+        process.stdout.write("numero fuori intervallo\n");
+        continue;
+      }
+      if (command.type === "detail") {
+        process.stdout.write(`\n${formatDetail(session)}\n`);
+        continue;
+      }
+      if (command.type === "rename") {
+        renameSession(session.sessionId, command.name);
+        const aliases = readAliases();
+        sessions = applyAliases(sessions, aliases).map((item, index) => ({ ...item, number: index + 1 }));
+        process.stdout.write(`Rinominata: "${command.name}"\n`);
+        continue;
+      }
+      if (command.type === "open") {
+        rl.close();
+        launchResume(session.sessionId);
+        return;
+      }
+    }
+  } finally {
+    rl.close();
   }
 }
 
-function main() {
+async function main() {
   const [requested, ...rest] = process.argv.slice(2);
   if (requested === "--help" || requested === "-h") {
     process.stdout.write(HELP);
@@ -247,13 +341,14 @@ function main() {
   }
   if (requested === "hook") return runHook();
   if (requested === "list") return runList(rest);
+  if (requested === "detail") return runDetail(rest);
   if (requested === "open") return runOpen(rest);
   if (requested === "command") return runCommand(rest);
   if (requested === "rinomina") return runRename(rest);
+  if (requested === "pick") return runPicker();
   if (!requested) {
-    if (process.stdin.isTTY) runList(rest);
-    else runHook();
-    return;
+    if (process.stdin.isTTY) return runPicker();
+    return runList(rest);
   }
   if (requested.startsWith("-")) return runList(process.argv.slice(2));
   if (/^\d+$/.test(requested)) return runOpen([requested, ...rest]);

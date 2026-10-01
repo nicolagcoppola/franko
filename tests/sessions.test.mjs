@@ -56,9 +56,10 @@ test("parseTranscriptHead tolerates malformed lines and reads titles", () => {
   assert.equal(info.summary, "riepilogo della sessione");
 });
 
-test("parseTranscriptTail reads tokens, cost and last prompt", () => {
+test("parseTranscriptTail reads tokens, cost, breakdown and last prompt", () => {
   const tail = [
     JSON.stringify({ type: "last-prompt", lastPrompt: "ultimo prompt utile" }),
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "risposta finale" }] } }),
     JSON.stringify({
       type: "cost-state",
       sessionId: "x",
@@ -77,8 +78,16 @@ test("parseTranscriptTail reads tokens, cost and last prompt", () => {
   ].join("\n");
   const info = parseTranscriptTail(tail);
   assert.equal(info.lastPrompt, "ultimo prompt utile");
+  assert.equal(info.lastReply, "risposta finale");
   assert.equal(info.tokens, 1365);
   assert.equal(info.costUSD, 0.12);
+  assert.deepEqual(info.breakdown, {
+    inputTokens: 110,
+    outputTokens: 55,
+    cacheReadTokens: 1000,
+    cacheWriteTokens: 200,
+  });
+  assert.deepEqual(info.models.sort(), ["claude-haiku", "claude-opus"]);
 });
 
 test("listSessions sorts by recency, applies limit and prefers titles over prompts", () => {
@@ -106,8 +115,19 @@ test("listSessions sorts by recency, applies limit and prefers titles over promp
   assert.equal(sessions[0].name, "sessione con titolo");
   assert.equal(sessions[0].projectLabel, "Nicola");
   assert.equal(sessions[0].sizeBytes > 0, true);
-  assert.equal(sessions[1].name, "prima richiesta");
+  assert.equal(sessions[1].name, "Prima richiesta");
   assert.equal(sessions[1].projectLabel, "Desktop");
+});
+
+test("listSessions derives a clean title from prompts", () => {
+  const configDir = tempDir();
+  writeTranscript(configDir, "D--Progetti-Desktop", "cccc3333-0000", [
+    { type: "user", message: { content: "<command-name>/plugin</command-name>" } },
+    { type: "user", message: { content: "vorrei capire come funziona il parser delle sessioni" } },
+  ]);
+  const sessions = listSessions({ configDir });
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].name, "Capire come funziona il parser delle sessioni");
 });
 
 test("listSessions names sessions from history and hides command-only ones", () => {
@@ -131,7 +151,7 @@ test("listSessions names sessions from history and hides command-only ones", () 
   const sessions = listSessions({ configDir });
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].sessionId, "aaaa1111-0000");
-  assert.equal(sessions[0].name, "sistemare il parser sessioni");
+  assert.equal(sessions[0].name, "Sistemare il parser sessioni");
   assert.equal(sessions[0].hasContent, true);
 
   const withEmpty = listSessions({ configDir, includeEmpty: true });
@@ -139,6 +159,45 @@ test("listSessions names sessions from history and hides command-only ones", () 
   const empty = withEmpty.find((session) => session.sessionId === "bbbb2222-0000");
   assert.equal(empty.name, "(solo comandi locali)");
   assert.equal(empty.hasContent, false);
+});
+
+test("listSessions excludes command-only sessions even when tokens were spent", () => {
+  const configDir = tempDir();
+  writeTranscript(configDir, "D--Progetti-Desktop", "eeee5555-0000", [
+    { type: "user", message: { content: "/rockspinner:spin grunge" } },
+    {
+      type: "cost-state",
+      sessionId: "eeee5555-0000",
+      totalCostUSD: 0.12,
+      modelUsage: { m: { inputTokens: 100, outputTokens: 50, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } },
+    },
+  ]);
+  assert.deepEqual(listSessions({ configDir }), []);
+});
+
+test("listSessions sums the token breakdown and writes a cache", () => {
+  const configDir = tempDir();
+  writeTranscript(configDir, "D--Progetti-Desktop", "dddd4444-0000", [
+    { type: "user", message: { content: "sistemare la cache dei transcript" } },
+    {
+      type: "cost-state",
+      sessionId: "dddd4444-0000",
+      totalCostUSD: 0.5,
+      modelUsage: { m: { inputTokens: 10, outputTokens: 20, cacheReadInputTokens: 3000, cacheCreationInputTokens: 400 } },
+    },
+  ]);
+  const sessions = listSessions({ configDir });
+  assert.equal(sessions[0].tokens, 3430);
+  assert.deepEqual(sessions[0].breakdown, {
+    inputTokens: 10,
+    outputTokens: 20,
+    cacheReadTokens: 3000,
+    cacheWriteTokens: 400,
+  });
+  assert.equal(fs.existsSync(path.join(configDir, "franko", "cache.json")), true);
+  const again = listSessions({ configDir });
+  assert.equal(again[0].tokens, 3430);
+  assert.equal(again[0].name, "Sistemare la cache dei transcript");
 });
 
 test("listSessions honors limit and projectDir filter", () => {
