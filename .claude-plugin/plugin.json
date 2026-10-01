@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "franko",
+  "displayName": "Franko",
+  "version": "0.1.0",
+  "description": "Franko greets on every session start, resume and clear, and recaps the latest Claude Code sessions across all projects with a ready resume command.",
+  "author": {
+    "name": "nicolagcoppola"
+  },
+  "license": "MIT",
+  "keywords": [
+    "sessions",
+    "greeting",
+    "resume",
+    "recap",
+    "productivity"
+  ]
+}

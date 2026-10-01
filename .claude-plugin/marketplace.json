@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "franko",
+  "owner": {
+    "name": "nicolagcoppola"
+  },
+  "description": "franko - session recap and greeting companion for Claude Code",
+  "plugins": [
+    {
+      "name": "franko",
+      "source": "./",
+      "description": "Greets on every session start and recaps the latest Claude Code sessions across all projects.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": [
+        "sessions",
+        "greeting",
+        "resume"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "franko",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Franko: a punctual colleague for Claude Code. Greets on every session start and recaps the latest sessions across all projects.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test tests/greetings.test.mjs tests/sessions.test.mjs tests/cli.test.mjs",
+    "validate": "node scripts/validate-catalog.mjs"
+  }
+}
