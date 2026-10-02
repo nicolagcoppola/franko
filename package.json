@@ -1,6 +1,6 @@
 {
   "name": "franko",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "description": "Franko: a punctual colleague for Claude Code. Greets on every session start and offers a local session picker with titles, token usage and resume commands.",

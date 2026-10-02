@@ -10,7 +10,7 @@
       "name": "franko",
       "source": "./",
       "description": "Greets on every session start and offers a local session picker with real titles, token usage and resume commands.",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "license": "MIT",
       "keywords": [
         "sessions",

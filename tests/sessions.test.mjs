@@ -119,6 +119,27 @@ test("listSessions sorts by recency, applies limit and prefers titles over promp
   assert.equal(sessions[1].projectLabel, "Desktop");
 });
 
+test("projectLabel handles Windows and POSIX cwd values on any platform", () => {
+  const configDir = tempDir();
+  writeTranscript(
+    configDir,
+    "D--Progetti-Desktop",
+    "aaaa0001-0000",
+    [{ type: "user", message: { content: "percorso windows" }, cwd: "C:\\Users\\Nicola" }],
+    1000,
+  );
+  writeTranscript(
+    configDir,
+    "home-nik-project",
+    "bbbb0002-0000",
+    [{ type: "user", message: { content: "percorso posix" }, cwd: "/home/nik/project" }],
+    2000,
+  );
+  const sessions = listSessions({ configDir });
+  assert.equal(sessions.find((session) => session.sessionId === "aaaa0001-0000").projectLabel, "Nicola");
+  assert.equal(sessions.find((session) => session.sessionId === "bbbb0002-0000").projectLabel, "project");
+});
+
 test("listSessions derives a clean title from prompts", () => {
   const configDir = tempDir();
   writeTranscript(configDir, "D--Progetti-Desktop", "cccc3333-0000", [
