@@ -60,31 +60,34 @@ function withTwoSessions() {
   return configDir;
 }
 
-test("hook startup prints a systemMessage with greeting and recap", () => {
-  const configDir = withSession();
-  const result = run(["hook"], { configDir, input: JSON.stringify({ source: "startup" }) });
-  assert.equal(result.status, 0, result.stderr);
-  const payload = JSON.parse(result.stdout);
-  assert.ok(GREETINGS.startup.some((phrase) => payload.systemMessage.includes(phrase)));
-  assert.match(payload.systemMessage, /Sistemare il recap di franko/);
-  assert.match(payload.systemMessage, /\| # \| Title \| Project \| Last activity \| Tokens \|/);
-  assert.match(payload.systemMessage, /\/franko:list/);
-});
-
-test("hook maps resume and clear sources", () => {
-  const configDir = withSession();
-  const resume = JSON.parse(run(["hook"], { configDir, input: JSON.stringify({ source: "resume" }) }).stdout);
-  assert.ok(GREETINGS.resume.some((phrase) => resume.systemMessage.includes(phrase)));
-  const clear = JSON.parse(run(["hook"], { configDir, input: JSON.stringify({ source: "clear" }) }).stdout);
-  assert.ok(GREETINGS.clear.some((phrase) => clear.systemMessage.includes(phrase)));
-});
+for (const source of ["startup", "resume", "clear"]) {
+  test(`hook ${source} prints a greeting and aligned plain-text recap`, () => {
+    const configDir = withSession();
+    const result = run(["hook"], { configDir, input: JSON.stringify({ source }) });
+    assert.equal(result.status, 0, result.stderr);
+    const { systemMessage } = JSON.parse(result.stdout);
+    assert.ok(GREETINGS[source].some((phrase) => systemMessage.includes(phrase)));
+    assert.match(systemMessage, /Sistemare il recap di franko/);
+    assert.match(systemMessage, /^\| #\s+\| Title\s+\| Project\s+\| Last activity\s+\| Tokens\s+\|$/m);
+    assert.match(systemMessage, /^\+(?:-+\+){5}$/m);
+    assert.doesNotMatch(systemMessage, /\| --- \|/);
+    const table = systemMessage.split("\n").filter((line) => /^[+|]/.test(line));
+    assert.equal(new Set(table.map((line) => line.length)).size, 1);
+    assert.match(systemMessage, /\/franko:list/);
+  });
+}
 
 test("hook reports an empty archive with exit code 0", () => {
   const configDir = tempConfigDir();
-  const result = run(["hook"], { configDir, input: JSON.stringify({ source: "startup" }) });
-  assert.equal(result.status, 0, result.stderr);
-  const payload = JSON.parse(result.stdout);
-  assert.ok(GREETINGS.empty.some((phrase) => payload.systemMessage.includes(phrase)));
+  for (const source of ["startup", "resume", "clear"]) {
+    const result = run(["hook"], { configDir, input: JSON.stringify({ source }) });
+    assert.equal(result.status, 0, result.stderr);
+    const { systemMessage } = JSON.parse(result.stdout);
+    const emptyPhrase = GREETINGS.empty.find((phrase) => systemMessage.includes(phrase));
+    assert.ok(emptyPhrase);
+    assert.equal(systemMessage.split(emptyPhrase).length, 2);
+    assert.doesNotMatch(systemMessage, /No conversations found\.|\+---|\| --- \|/);
+  }
 });
 
 test("hook tolerates invalid stdin", () => {

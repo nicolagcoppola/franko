@@ -1,18 +1,18 @@
 # franko
 
-Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear with a recap of your recent conversations as a Markdown table, and gives you a local picker with the real conversations of every project, complete with titles, token usage and resume commands.
+Franko is the punctual colleague for Claude Code: he greets on every session start, resume and clear with a recap of your recent conversations as a bordered text table, and gives you a local picker with the real conversations of every project, complete with titles, token usage and resume commands.
 
 ```text
-| # | Title                                        | Project     | Last activity | Tokens |
-| --- | --- | --- | --- | --- |
-| 1 | Configurazione workspace API Anthropic       | Nicola      | 5d ago        | 344k   |
-| 2 | Idee per plugin Claude Code e OpenCode       | rockspinner | 6d ago        | 278k   |
-| 3 | Prove del nuovo spinner                      | Nicola      | 1w ago        | 317k   |
++----+----------------------------------------------+------------------+---------------+----------+
+| #  | Title                                        | Project          | Last activity | Tokens   |
++----+----------------------------------------------+------------------+---------------+----------+
+| 1  | Session recap rendering fix                  | franko           | 8m ago        | 12k      |
++----+----------------------------------------------+------------------+---------------+----------+
 ```
 
 ## Features
 
-- **Greeting on every entry point**: `startup`, `resume` and `/clear` through a `SessionStart` hook, with the recent sessions rendered as a Markdown table
+- **Greeting on every entry point**: `startup`, `resume` and `/clear` through a `SessionStart` hook, with the recent sessions rendered as an aligned, bordered text table
 - **Only real conversations**: sessions with local commands, slash commands or empty prompts are hidden
 - **Local titles**: a clean title derived from the actual prompts, errors and content, with no AI calls
 - **Local picker, zero Claude tokens**: `franko` in a terminal lists, searches, renames and resumes sessions without involving the model
@@ -109,7 +109,7 @@ The greetings stay in Italian; the commands, options and interface are in Englis
 - **Aliases** live in `~/.claude/franko/aliases.json`. Renaming also appends a `custom-title` entry to the transcript, best effort: if your Claude Code version does not read it, the Franko alias still works.
 - **Cache**: parsed transcript heads and tails are cached in `~/.claude/franko/cache.json` and invalidated by file size and mtime.
 
-The transcript format is internal to Claude Code and may change; the reader is tolerant and falls back gracefully. The Markdown recap depends on how Claude Code renders hook messages: if a version shows it as plain text, the terminal picker remains the reference interface.
+The transcript format is internal to Claude Code and may change; the reader is tolerant and falls back gracefully. The startup recap uses fixed-width text borders, so it does not depend on Markdown rendering in hook messages. Its title column is limited to 44 characters; use `/franko:details` to read the full title. Markdown output remains available explicitly with `list --md` and `search --md`.
 
 ## Development
 

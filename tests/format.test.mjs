@@ -88,7 +88,7 @@ test("markdown table escapes pipes, truncates long titles and marks missing toke
   assert.match(row, /\| 1w ago \| - \|$/);
 });
 
-test("recap message embeds the markdown table", () => {
+test("recap message embeds an aligned bordered table for plain-text hooks", () => {
   const item = session();
   const message = buildRecapMessage({
     sessions: [item],
@@ -99,6 +99,37 @@ test("recap message embeds the markdown table", () => {
   });
   assert.match(message, /^Ciao\./);
   assert.match(message, /Punto: 1 su 1\./);
-  assert.match(message, /\| # \| Title \| Project \| Last activity \| Tokens \|/);
+  assert.match(message, /^\| #\s+\| Title\s+\| Project\s+\| Last activity\s+\| Tokens\s+\|$/m);
+  assert.match(message, /^\+(?:-+\+){5}$/m);
+  assert.doesNotMatch(message, /\| --- \|/);
+  const table = message.split("\n").filter((line) => /^[+|]/.test(line));
+  assert.equal(table.length, 5);
+  assert.equal(new Set(table.map((line) => line.length)).size, 1);
   assert.match(message, /\/franko:list/);
+});
+
+test("default ten-session recap fits the message limit with long titles", () => {
+  const items = Array.from({ length: 10 }, (_, index) => session({
+    name: `Session ${index + 1}: ${"long path and details ".repeat(15)}`,
+    projectLabel: "project-with-a-long-name",
+  }));
+  const message = buildRecapMessage({
+    sessions: items,
+    greeting: "Ciao.",
+    recapIntro: "Punto: {n} su {p}.",
+    emptyPhrase: "Vuoto.",
+    now: items[0].mtimeMs + 3600000,
+  });
+  const table = message.split("\n").filter((line) => /^[+|]/.test(line));
+  const rows = table.filter((line) => /^\| \d/.test(line));
+  assert.equal(rows.length, 10);
+  assert.equal(table.length, 23);
+  assert.equal(new Set(table.map((line) => line.length)).size, 1);
+  for (const row of rows) {
+    const title = row.split("|")[2];
+    assert.equal(title.length, 46); // 44-character column plus one space on each side.
+    assert.match(title, /…/);
+  }
+  assert.ok(message.length < 9900);
+  assert.ok(message.endsWith("Open /franko:list to browse and resume a session."));
 });
